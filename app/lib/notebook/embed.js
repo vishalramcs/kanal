@@ -23,6 +23,7 @@ export const normalize = (v) => {
 
 async function embedLocal(texts) {
   if (!localPipeline) {
+    if (process.env.VERCEL) throw new Error("Set GEMINI_API_KEY: the local embedding model isn't bundled on Vercel.");
     const { env, pipeline } = await import("@huggingface/transformers");
     env.cacheDir = path.join(process.env.NOTEBOOK_DATA_DIR || ".data", "models");
     localPipeline = pipeline("feature-extraction", LOCAL_MODEL, { dtype: "q8" });

@@ -1,6 +1,6 @@
 # CLAUDE.md: ADAPT study planner rules
 
-See README.md for the architecture, setup and RAG pipeline.
+See README.md for setup and docs/ARCHITECTURE.md for the architecture and RAG pipeline.
 
 ## Stack
 - Next.js 16 (App Router) + React, **JavaScript with `.jsx` components** (no TypeScript), Tailwind 4 (theme in `app/globals.css`), Framer Motion, lucide-react.
