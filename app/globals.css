@@ -1,0 +1,60 @@
+@import "tailwindcss";
+
+/* Design tokens (Good Boy reference, tuned calmer for studying) */
+@theme {
+  --color-cream: hsl(48 100% 96%);
+  --color-cream-deep: hsl(46 80% 90%);
+  --color-paper: #ffffff;
+  --color-ink: hsl(228 40% 14%);
+  --color-ink-soft: hsl(228 14% 36%);
+  --color-sun: hsl(46 100% 58%);
+  --color-sun-soft: hsl(48 100% 86%);
+  --color-cobalt: hsl(226 80% 52%);
+  --color-bubble: hsl(346 88% 72%);
+  --color-bubble-soft: hsl(346 90% 92%);
+  --color-mint: hsl(152 50% 58%);
+  --color-weak: hsl(4 72% 44%);
+  --color-medium: hsl(28 90% 34%);
+  --color-strong: hsl(150 62% 26%);
+
+  --font-display: var(--font-bricolage), ui-sans-serif, system-ui, sans-serif;
+  --font-sans: var(--font-nunito), ui-sans-serif, system-ui, sans-serif;
+
+  --shadow-hard-sm: 3px 3px 0 var(--color-ink);
+  --shadow-hard: 4px 4px 0 var(--color-ink);
+  --shadow-hard-lg: 6px 6px 0 var(--color-ink);
+
+  --animate-marquee: marquee 40s linear infinite;
+  @keyframes marquee {
+    from { transform: translateX(0); }
+    to { transform: translateX(-50%); }
+  }
+}
+
+@layer base {
+  html { -webkit-font-smoothing: antialiased; }
+  body { @apply bg-cream text-ink font-sans; font-size: 17px; line-height: 1.6; }
+  h1, h2, h3 { @apply font-display font-extrabold; letter-spacing: -0.03em; }
+  :focus-visible { outline: 3px solid var(--color-cobalt); outline-offset: 3px; border-radius: 8px; }
+  ::selection { background: var(--color-sun); }
+  /* Grid children may shrink below their content width (prevents sideways scroll on phones). */
+  .grid > * { min-width: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}
+
+/* React Bits: OptionWheel (positions are driven by its rAF loop) */
+@layer components {
+  .option-wheel { position: relative; width: 100%; height: 100%; overflow: hidden; cursor: grab; user-select: none; touch-action: none; outline: none; }
+  .option-wheel:focus-visible { box-shadow: inset 0 0 0 3px var(--color-sun); border-radius: 16px; }
+  .option-wheel--dragging { cursor: grabbing; }
+  .option-wheel__item {
+    position: absolute; top: 50%; left: var(--ow-inset); white-space: nowrap; line-height: 1;
+    font-family: var(--font-display); font-size: var(--ow-font-size); font-weight: 600;
+    transform-origin: left center; cursor: pointer; will-change: transform, opacity, filter;
+    color: color-mix(in srgb, var(--ow-active-color) calc(var(--ow-p, 0) * 100%), var(--ow-text-color));
+  }
+  .option-wheel__item--selected { font-weight: 800; }
+}

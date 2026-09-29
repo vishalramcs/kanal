@@ -1,0 +1,23 @@
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Dependencies / build
+node_modules/
+.next/
+out/
+*.tsbuildinfo
+next-env.d.ts
+
+# Notebook data (documents, vectors, conversations) and the local embedding model cache
+.data/
+
+# Portable Node used for local dev (downloaded, not source)
+tools/
+
+# Editors / OS
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store
