@@ -1,152 +1,159 @@
-# ADAPT: AI Dynamic Academic Planning & Tracking
+# ADAPT: AI study planner for PSG Tech
 
-**Plan → Study → Track → Adapt.** ADAPT is a study planner for PSG Tech students.
+Plan → Study → Track → Adapt. Subjects, an adaptive timetable, and an AI notebook that answers from your own notes.
+Sign-in is Google only, restricted to **@psgtech.ac.in** accounts.
 
-Every subject gets its own **workspace**: Materials, an AI Notebook grounded in your uploaded files, a Quiz, and Progress. All of it plugs into the adaptive planner.
+How it works inside: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 
-## Architecture
+---
 
+## 1. What you need to install
+
+| Install | Why | Get it |
+|---|---|---|
+| **Node.js 20 or newer** (LTS) | runs the app (npm comes with it) | https://nodejs.org |
+| **Git** | download the code | https://git-scm.com |
+
+Check both work: `node -v` and `git --version`.
+
+All other libraries (Next.js, React, Tailwind, Supabase, etc.) are installed automatically by `npm install` in step 2.
+
+## 2. What accounts and keys you need
+
+| Key (in `.env.local`) | Required? | Where to get it |
+|---|---|---|
+| `NEXT_PUBLIC_SUPABASE_URL` | Yes | Supabase → Project Settings → **Data API** → Project URL |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Yes | Supabase → Project Settings → **API Keys** → Publishable key |
+| `SUPABASE_SECRET_KEY` | Yes | Supabase → Project Settings → **API Keys** → Secret key |
+| `DATABASE_URL` | Yes | Supabase → **Connect** button (top of the dashboard) → connection string |
+| `ALLOWED_EMAIL_DOMAIN` | Yes | Leave it as `psgtech.ac.in` |
+| `GEMINI_API_KEY` | Optional (recommended) | https://aistudio.google.com/apikey → Create API key |
+| Google **Client ID + Client Secret** | Yes | Google Cloud Console (step 6). They go into **Supabase**, not `.env.local` |
+
+Without `GEMINI_API_KEY` the app still works, but the AI answers are simpler (it uses local fallbacks).
+
+---
+
+## 3. Setup, step by step
+
+### Step 1: Download the code
+
+```bash
+git clone https://github.com/vishalramcs/kanal.git
+cd kanal
 ```
-Browser (Next.js pages, JSX + Tailwind)
-   │  Supabase session cookie (httpOnly, set by @supabase/ssr)
-   ▼
-proxy.js ── refreshes the session; signed out → /login (APIs: 401); non-@psgtech.ac.in → signed out (APIs: 403)
-   ▼
-app/api/** route handlers ── requireUser(): verify the session with Supabase Auth + check the domain again
-   │  queries run with the USER's session (never the secret key) → Row Level Security applies
-   ▼
-Supabase: Auth (Google) · PostgreSQL + pgvector (RLS on every table) · Storage (private "materials" bucket)
-Gemini: answers, explanations, study tools, embeddings (local fallbacks when unavailable)
+
+### Step 2: Install the libraries
+
+```bash
+npm install
 ```
 
-**How the pieces relate:** User → Subject → Materials → text chunks with vectors → subject-filtered search → notebook answer with citations. Quiz scores flow back into the planner's topic confidence, and the planner reschedules around them.
+### Step 3: Create a Supabase project
 
-## Setup (Windows, PowerShell)
+1. Sign up at https://supabase.com → **New project**.
+2. Choose a name and a **database password**. Save the password; you need it in step 4.
+3. Wait until the project finishes setting up (about 2 minutes).
 
-1. **Environment:** copy `.env.example` to `.env.local` and fill in the Supabase URL, publishable key, secret key and `DATABASE_URL`. `GEMINI_API_KEY` is optional.
-2. **Database:** `npm run db:migrate` creates the tables, security rules (RLS), the vector search function and the private Storage bucket. It's safe to run more than once. It also stores `ALLOWED_EMAIL_DOMAIN` in the database.
-3. **Google sign-in** (one-time, in the dashboards):
-   - **Google Cloud Console:**
-     - APIs & Services → Credentials → *Create OAuth client ID* → Web application.
-     - Authorized redirect URI: `https://<project-ref>.supabase.co/auth/v1/callback`
-     - OAuth consent screen: add the app name and a support email.
-   - **Supabase → Authentication → Sign In / Providers → Google:** turn it on and paste the Client ID and Client Secret.
-   - **Supabase → Authentication → URL Configuration:**
-     - Site URL: `http://localhost:3000`
-     - Redirect URLs: add `http://localhost:3000/auth/callback` (and your production URL + `/auth/callback`).
-   - **Recommended:** turn off the **Email** provider, so Google is the only way to sign in.
-4. **Run:** `powershell -ExecutionPolicy Bypass -File scripts\dev.ps1` → http://localhost:3000. The script uses the portable Node in `tools/node`.
+### Step 4: Create `.env.local`
+
+Copy the example file:
+
+```bash
+# Windows (PowerShell)
+copy .env.example .env.local
+# Mac / Linux
+cp .env.example .env.local
+```
+
+Open `.env.local` and fill in the keys from the table in section 2.
+
+For `DATABASE_URL`, replace `<password>` with your database password. If the password has special characters, write them encoded: `@` → `%40`, `#` → `%23`, `&` → `%26`, `)` → `%29`, `(` → `%28`.
+
+> If `db:migrate` can't connect (common on home Wi-Fi), use the **Session pooler** connection string from the **Connect** button instead.
+
+### Step 5: Create the database tables
+
+```bash
+npm run db:migrate
+```
+
+This creates all tables, security rules and the file storage bucket. It's safe to run more than once. You should see `applied 0001_init.sql` and `allowed email domain: psgtech.ac.in`.
+
+### Step 6: Set up Google sign-in
+
+**A. Google Cloud Console** (https://console.cloud.google.com)
+
+1. Create a project (top bar → project picker → **New project**).
+2. Go to **APIs & Services → OAuth consent screen** (also called **Google Auth Platform**):
+   - **User type / Audience:** **External**.
+   - Fill in the app name (`ADAPT`), your support email and the developer email.
+   - **Publish the app** (Audience → *Publish app*). If you keep it in *Testing*, add every student's email under **Test users**, or they can't sign in.
+3. Go to **APIs & Services → Credentials → Create credentials → OAuth client ID**:
+   - **Application type:** **Web application**
+   - **Authorized JavaScript origins:** `http://localhost:3000`
+   - **Authorized redirect URIs:** `https://<your-project-ref>.supabase.co/auth/v1/callback`
+     (the same address as your Supabase URL, with `/auth/v1/callback` at the end)
+   - Click **Create**, then copy the **Client ID** and **Client Secret**.
+
+**B. Supabase dashboard**
+
+1. **Authentication → Sign In / Providers → Google:** turn it **on**, paste the Client ID and Client Secret from the **same** Google client, and click **Save**.
+2. **Authentication → URL Configuration:**
+   - **Site URL:** `http://localhost:3000`
+   - **Redirect URLs:** add `http://localhost:3000/auth/callback`
+3. *(Recommended)* **Sign In / Providers → Email:** turn it **off**, so Google is the only way in.
+
+> A new Google secret can take about 5 minutes to start working.
+
+### Step 7: Run the app
+
+```bash
+npm run dev
+```
+
+Open **http://localhost:3000** → **Continue with Google** → pick your `@psgtech.ac.in` account. Your account is created automatically on the first sign-in.
+
+---
+
+## 4. Useful commands
 
 | Command | What it does |
 |---|---|
-| `npm run dev` / `npm run build` + `npm start` | Develop / production |
-| `npm test` | Unit tests: planner engine, domain rule, extraction, chunking, RAG prompts, study tools |
-| `npm run test:security` | **Live** Supabase checks: RLS, storage policies, subject-filtered search. Creates and deletes temporary users. |
-| `npm run db:migrate` | Apply `supabase/migrations/*.sql` |
+| `npm run dev` | Start the app for development (http://localhost:3000) |
+| `npm run build` then `npm start` | Production build and run |
+| `npm run db:migrate` | Create or update the database |
+| `npm test` | Unit tests |
+| `npm run test:security` | Live Supabase security checks (creates and deletes temporary test users) |
 
-## Authentication (Supabase Auth + Google, `@psgtech.ac.in` only)
+## 5. Deploy to Vercel
 
-- **Flow:** `/login` → **Continue with Google** → Google → Supabase → `/auth/callback`.
-  - The callback exchanges the code, then **re-reads the user from Supabase Auth on the server** and checks the email domain.
-  - Allowed users get a profile row (keyed by the Supabase user id, so repeat sign-ins create no duplicates).
-  - Rejected users are signed out and their just-created account is deleted.
-- **Domain rule** (`app/lib/auth/domain.js`): case-insensitive, and the domain must match *exactly*. `x@psgtech.ac.in.evil.com` and `x@sub.psgtech.ac.in` are rejected.
-  - The value comes only from `ALLOWED_EMAIL_DOMAIN`.
-  - Google's `hd` hint only pre-filters the account picker. It is **not** trusted.
-- **Enforced in four layers:**
-  1. the OAuth callback
-  2. `proxy.js` on every request
-  3. `requireUser()` in every API
-  4. **the database**: every RLS policy requires `user_id = auth.uid()` **and** `is_allowed_user()`, which checks the login token's email against the configured domain
-- **Sessions:** Supabase cookies, refreshed by `proxy.js`, so a refresh keeps you signed in.
-- **Log out:** the avatar menu → `POST /auth/signout` → cookies cleared → `/login`.
-- **Auth state:** one `AuthProvider` for the whole app (`user`, `session`, `loading`, `isAuthenticated`, `signOut`).
-- **No passwords** are handled anywhere, and the secret key never reaches the browser.
+1. Push your latest code to GitHub (`git push`).
+2. https://vercel.com → sign in with GitHub → **Add New → Project** → import the repo. Framework is detected as **Next.js**; keep the defaults.
+3. Under **Environment Variables**, add everything from your `.env.local` **except** `DATABASE_URL` (only needed for `db:migrate` on your PC). **`GEMINI_API_KEY` is required on Vercel** (the offline model isn't bundled there).
+4. Click **Deploy** and copy your URL, e.g. `https://adapt-xyz.vercel.app`.
+5. **Supabase → Authentication → URL Configuration:**
+   - **Site URL:** your Vercel URL
+   - **Redirect URLs:** add `https://adapt-xyz.vercel.app/auth/callback` (keep the localhost one for local development)
+6. **Google Cloud → Credentials → your OAuth client:** add your Vercel URL under **Authorized JavaScript origins**. The redirect URI stays the Supabase one.
+7. Open the Vercel URL and sign in. Every later `git push` to `main` redeploys automatically.
 
-## Subject workspaces & AI Notebook
+> Changed an environment variable in Vercel? Redeploy (Deployments → ⋯ → **Redeploy**) for it to take effect.
 
-Open **Subjects → a subject** to see five tabs: **Overview · Materials · Notebook · Quiz · Progress**.
+## 6. If something goes wrong
 
-- **Materials:** PDF, PPT, PPTX, DOC, DOCX, TXT and MD, up to 10 MB and 30 files per subject.
-  - Each file shows its type, size, upload date, page or slide count, and status (Processing → Ready ✓ / Failed ✕).
-  - Originals are kept in private Storage at `<user_id>/<subject_id>/<material_id>/<file>` and open through short-lived signed links. PDFs open at the cited page.
-- **Notebook:**
-  - Answers are streamed from **this subject's materials only**, and can be limited to one material ("Source").
-  - Each answer shows its sources (e.g. `Trees.pdf — Page 2`); click one to read the exact passage or open the file.
-  - Conversations are saved in the database, and follow-ups understand context from the last 6 turns.
-  - When the material doesn't cover a question, the answer says: *"I couldn't find enough information about this in your uploaded Data Structures materials."* Any general explanation that follows is clearly labelled as not from your materials.
-- **Actions:** Summarize · Explain simply · Important points · Flashcards · Explain a topic · Create a study plan from the material (adds topics; the planner schedules them).
-- **Quiz:** choose the number of questions (3–15), the difficulty, and one material or the whole subject.
-  - Scores are saved to the chosen topic, updating its confidence and therefore its planner priority.
-  - Low scores offer a 30-minute revision session.
-- **Overview:** material count, notebook conversation count, real quiz accuracy, weakest topic, and the next best step.
-
-### RAG pipeline (`app/lib/notebook/`)
-
-```
-Upload → validate (extension + file signature, size, zip-bomb guard, sanitised name) → Supabase Storage
-       → extract (PDF per page · PPT/PPTX per slide · DOCX per heading · MD per heading · DOC/TXT)
-       → clean → chunk (~900 chars, 150 overlap, never across pages/slides/sections)
-       → metadata (user_id, subject_id, material_id, page/slide/section, chunk index)
-       → embeddings, ONCE (Gemini gemini-embedding-001, 768-d; local all-MiniLM-L6-v2 fallback)
-       → material_chunks (pgvector)
-Question → query embedding → match_material_chunks(subject, materials?) — SQL filters user = auth.uid(), subject, model
-         → top 6 → Gemini with numbered sources + last 6 turns + subject study-plan digest (built on the server from the DB)
-         → streamed answer with [n] citations
-```
-
-- **Isolation is enforced in the database.**
-  - The search function filters by `auth.uid()` and the subject, and RLS applies on top.
-  - Composite foreign keys (`user_id, subject_id, material_id`) make it impossible for a chunk to belong to another subject's or another user's material.
-- **Why RAG?** Sending whole documents on every question is slow and costly, and it dilutes the model's attention. Retrieval sends only the few relevant passages. Each has a known page or slide, so answers can cite exactly where they came from, and the app can admit when the material doesn't cover something.
-
-## Database (`supabase/migrations/0001_init.sql`)
-
-| Table | Purpose |
+| You see | Fix |
 |---|---|
-| `profiles` | email, display name, avatar (`user_id` → `auth.users`) |
-| `subjects` | planner subjects (`(user_id, id)` key; topics as JSON) |
-| `planner_state` | the rest of the planner (plan, history, profile, session) |
-| `materials` | uploaded files: storage path, type, size, status, page/slide count |
-| `material_chunks` | text + `vector` + page/slide/section + embedding model |
-| `notebook_conversations`, `notebook_messages` | per-subject chats with sources |
-| `app_config` | `allowed_email_domain` (not readable through the API) |
+| `Unsupported provider: provider is not enabled` / "Google sign-in isn't switched on yet" | Step 6B.1: turn Google on in Supabase and click **Save**. |
+| "Details: Unable to exchange external code" | The Client Secret in Supabase doesn't match the Client ID. Copy **both** again from the **same** Google client (make a new secret if needed), save, wait 5 min. |
+| Google keeps spinning or says *access blocked* | Step 6A.2: consent screen must be **External** and **Published** (or you must be a test user). If PSG's Google Workspace blocks unknown apps, a PSG admin must allow the Client ID. |
+| `redirect_uri_mismatch` | The redirect URI in Google Cloud must exactly match `https://<ref>.supabase.co/auth/v1/callback`. |
+| "This app is only for PSG Tech accounts" | You signed in with a non-`@psgtech.ac.in` account. Use your college account. |
+| `db:migrate` fails with password or connection errors | Check the password encoding in step 4, or use the Session pooler connection string. |
+| `'node' is not recognized` | Install Node.js 20+ and reopen the terminal. |
+| On Vercel, sign-in returns to `localhost` | Step 5.5: set the Supabase **Site URL** and add the Vercel `/auth/callback` Redirect URL. |
 
-Every user table has RLS (`owner access`: owner **and** allowed domain), and the `anon` role has no access. The private `materials` bucket has per-user folder policies with the same domain check.
+## 7. Keep secrets safe
 
-## Planner engine
-
-Unchanged and deterministic (`app/lib/planner.js`, `priority.js`):
-- priority scores with plain-language reasons
-- a 15–25% daily buffer
-- missed-session redistribution (45/33/22%)
-- Exam Crunch Mode and burnout checks
-
-## Testing done
-
-- **`npm test`:** 25 unit tests. They cover:
-  - the domain rule: `student@psgtech.ac.in` and `Student@PSGTECH.AC.IN` allowed; `@gmail.com`, `@yahoo.com`, `@outlook.com`, `@othercollege.edu` and look-alikes rejected
-  - PDF, PPT, PPTX, DOCX, MD and TXT extraction with page/slide numbers
-  - chunk metadata, the subject "not found" message, quiz options, and real quiz statistics
-  - plus the planner tests
-- **`npm run test:security`:** 7 live checks against Supabase:
-  - User B cannot read, change or delete User A's rows or files
-  - a Gmail account is denied even on its own rows
-  - anonymous access is denied
-  - DSA search never returns Java chunks, and vice versa
-  - the composite key blocks filing a chunk under another subject
-  - deleting a subject cascades
-- **Browser test in Edge** (real Supabase users signed in through one-time links, since only the Google screen itself was skipped). All passed:
-  - logged-out `/dashboard` → `/login`
-  - Gmail → rejected with a message
-  - your full Data Structures (`Trees.pdf`) and Java (`OOP.pdf`) scenario, including follow-ups, isolation both ways, one-material search, quizzes feeding progress, and refresh persistence
-  - User B gets 404 on User A's subject, file, chat and delete
-  - logout, and mobile layouts at 390px
-
-## Known limitations
-
-- **The real Google sign-in wasn't tested** here: Google must be enabled in the Supabase dashboard (setup step 3) and needs a real `@psgtech.ac.in` account.
-- **Old `.doc`:** body text only (no headings), so citations say "Part n".
-- **Old `.ppt`:** slide numbers follow the file's internal order, which can differ from the visible order in unusual files.
-- **Scanned PDFs** (images only) have no text to extract. OCR isn't included.
-- **Local embedding model:** without a Gemini key it runs on the server, and the first upload downloads ~23 MB.
+- `.env.local` is ignored by Git. **Never commit it** and never share the secret key, database password or Gemini key.
+- Only the `NEXT_PUBLIC_` values are allowed in the browser. Everything else stays on the server.
